@@ -102,11 +102,14 @@ def encrypt():
 
     vault_ids = list_vault_identities(ansible_cfg_file)
     if vault_ids:
-        vault_ids_str = ", ".join(vault_ids)
-        vault_id = vim.eval(f'input("Enter the vault-id ({vault_ids_str})> ")')
-        if vault_id not in vault_ids:
-            print(f"{vault_id} is not in {vault_ids}")
-            return
+        if len(vault_ids) > 1:
+            vault_ids_str = ", ".join(vault_ids)
+            vault_id = vim.eval(f'input("Enter the vault-id ({vault_ids_str})> ")')
+            if vault_id not in vault_ids:
+                print(f"{vault_id} is not in {vault_ids}")
+                return
+        else:
+            vault_id = vault_ids[0]
     else:
         print("No vault-id found in ansible.cfg file. Skipping...")
         return
