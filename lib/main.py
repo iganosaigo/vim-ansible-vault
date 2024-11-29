@@ -47,10 +47,9 @@ def prepare(func: Callable):
 
 def get_ansibe_config_and_dir():
     ansible_cfg_file = find_ansible_config_file()
+    ansible_dir = ""
     if ansible_cfg_file:
         ansible_dir = os.path.dirname(ansible_cfg_file)
-    else:
-        ansible_dir = None
 
     return ansible_cfg_file, ansible_dir
 
@@ -93,30 +92,50 @@ def run_cmd(cmd: str, dir: str):
     return result
 
 
+def set_vault_id(vault_ids: list[str]):
+    if len(vault_ids) > 1:
+        vault_ids_str = ", ".join(vault_ids)
+        vault_id = vim.eval(f'input("Enter the vault-id ({vault_ids_str})> ")')
+        if vault_id not in vault_ids:
+            print(f"{vault_id} is not in {vault_ids}")
+            return
+    else:
+        vault_id = vault_ids[0]
+    return vault_id
+
+
 @prepare
 def encrypt():
+    vault_cmd_opts = ""
+    vault_env = os.environ.get("VAULT_PASSWORD_FILE", None)
     ansible_cfg_file, ansible_dir = get_ansibe_config_and_dir()
-    if not ansible_cfg_file or not ansible_dir:
-        print("ansible.cfg not found. Skipping...")
-        return
 
-    vault_ids = list_vault_identities(ansible_cfg_file)
-    if vault_ids:
-        if len(vault_ids) > 1:
-            vault_ids_str = ", ".join(vault_ids)
-            vault_id = vim.eval(f'input("Enter the vault-id ({vault_ids_str})> ")')
-            if vault_id not in vault_ids:
-                print(f"{vault_id} is not in {vault_ids}")
-                return
+    if vault_env:
+        cfg_dir = os.path.dirname(vault_env)
+        vault_cmd_opts = f"--vault-password-file {vault_env}"
+    elif ansible_cfg_file:
+        cfg_dir = ansible_dir
+        vault_ids = list_vault_identities(ansible_cfg_file)
+        if vault_ids:
+            if len(vault_ids) > 1:
+                vault_ids_str = ", ".join(vault_ids)
+                vault_id = vim.eval(f'input("Enter the vault-id ({vault_ids_str})> ")')
+                if vault_id not in vault_ids:
+                    print(f"{vault_id} is not in {vault_ids}")
+                    return
+            else:
+                vault_id = vault_ids[0]
+            vault_cmd_opts = f"--encrypt-vault-id {vault_id}"
         else:
-            vault_id = vault_ids[0]
+            print("No vault-id found in ansible.cfg file. Skipping...")
+            return
     else:
-        print("No vault-id found in ansible.cfg file. Skipping...")
+        print("ansible.cfg or environ variable not found. Skipping...")
         return
 
     current_buffer = vim.current.buffer.name
-    cmd = f"ansible-vault encrypt --encrypt-vault-id {vault_id} {current_buffer}"
-    result = run_cmd(cmd, ansible_dir)
+    cmd = f"ansible-vault encrypt {vault_cmd_opts} {current_buffer}"
+    result = run_cmd(cmd, cfg_dir)
 
     if result.returncode != 0:
         print(result.stderr)
@@ -125,15 +144,23 @@ def encrypt():
 
 @prepare
 def decrypt():
+    vault_cmd_opts = ""
+    vault_env = os.environ.get("VAULT_PASSWORD_FILE", None)
     ansible_cfg_file, ansible_dir = get_ansibe_config_and_dir()
-    if not ansible_cfg_file or not ansible_dir:
-        print("ansible.cfg not found. Skipping...")
+
+    if vault_env:
+        cfg_dir = os.path.dirname(vault_env)
+        vault_cmd_opts = f"--vault-password-file {vault_env}"
+    elif ansible_cfg_file:
+        cfg_dir = ansible_dir
+    else:
+        print("ansible.cfg or environ variable not found. Skipping...")
         return
 
     current_buffer = vim.current.buffer.name
 
-    cmd = f"ansible-vault decrypt {current_buffer}"
-    result = run_cmd(cmd, ansible_dir)
+    cmd = f"ansible-vault decrypt {vault_cmd_opts} {current_buffer}"
+    result = run_cmd(cmd, cfg_dir)
 
     if result.returncode != 0:
         print(f'echoerr "{result.stderr}"')
